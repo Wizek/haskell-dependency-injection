@@ -3,6 +3,7 @@
 {-# language PatternSynonyms #-}
 {-# language ScopedTypeVariables #-}
 {-# language FlexibleInstances #-}
+{-# language LambdaCase #-}
 import Data.Dynamic
 import Data.Maybe
 import qualified Data.Map as Map
@@ -60,8 +61,8 @@ defs :: Defs
 defs =
   Map.fromList
     [ ("a", (["b"], Dyn (\(Dyn b) -> Dyn ((b :: Integer) + 1))))
-    , ("b", ([], Dyn (3 :: Integer)))
-    , ("c", ([], Dyn (\b -> ((b :: Integer) + 1))))
+    , ("b", ([], Dyn $ Dyn (3 :: Integer)))
+    -- , ("c", ([], Dyn (\b -> ((b :: Integer) + 1))))
 
     , ("f2", (["i1", "s1"], Dyn f2))
     , ("i1", ([], Dyn (1 :: Integer)))
@@ -71,10 +72,26 @@ defs =
 -- exec = exec' .> fromDynamic
 
 exec' :: Defs -> String -> Dynamic
-exec' defs k = applyMany (dynF $> fromDynamic $> fromJust) (map (exec' defs) depNames)
+exec' defs k = asd (dynF) (map (exec' defs) depNames)
   where
   (depNames, dynF) = defs Map.! k
 
 main = do
   -- print $ (exec defs "b" :: Maybe Integer)
   print $ (exec' defs "a" $> fromDynamic :: Maybe Integer)
+
+
+type D = Dynamic
+
+-- map ($ (toDyn ((2,3) :: (Int, Int), (*) :: Int -> Int->Int))) [((fromDynamic :: Dynamic -> Maybe ((Int, Int), Int -> Int -> Int)) .> fmap (\((a,b), f) -> f a b)), ((fromDynamic :: Dynamic -> Maybe (Int, Int -> Int)) .> fmap (\((a), f)-> f a ))] :: [Maybe Int]
+asd dyn args = map ($ dyn)
+  [ ((fromDynamic :: D -> Maybe (D)) .> fmap (\v -> v))
+  -- , ((fromDynamic :: D -> Maybe (a)) .> fmap (\v -> v))
+  , ((fromDynamic :: D -> Maybe (D -> D)) .> fmap (\f -> applyMany f args))
+  , ((fromDynamic :: D -> Maybe (D -> D -> D)) .> fmap (\f -> applyMany f args))
+  ]
+  $> filter isJust
+  $> (\case
+    (Just a : _) -> a
+    ([]) ->         error $ show (dyn, args)
+  )
